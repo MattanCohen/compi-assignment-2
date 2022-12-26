@@ -573,15 +573,15 @@ module Tag_Parser : TAG_PARSER = struct
             ScmPair (ScmSymbol "vector", sexprs)
     | sexpr -> sexpr;;
 
-  let rec macro_expand_and_clauses expr = function
-    | [] -> ScmConst (ScmBoolean true)
-    (* | [] -> raise X_not_yet_implemented *)
-    | expr' :: exprs -> raise X_not_yet_implemented;;
+  let rec macro_expand_and_clauses expr =
+    match expr with
+    | [] -> ScmNil
+    | expr' :: exprs -> ScmPair(expr',
+                                (macro_expand_and_clauses exprs)) ;;
 
   let rec macro_expand_cond_ribs ribs =
     match ribs with
-    | ScmNil -> ScmConst (ScmBoolean true)
-    (* | ScmNil -> raise X_not_yet_implemented *)
+    | ScmNil -> raise X_not_yet_implemented
     | ScmPair (ScmPair (ScmSymbol "else", exprs), ribs) ->
        raise X_not_yet_implemented
     | ScmPair (ScmPair (expr,
@@ -631,14 +631,28 @@ module Tag_Parser : TAG_PARSER = struct
                             ScmPair (remaining, ScmNil))))
     | _ -> raise (X_syntax "malformed cond-rib");;
 
+
+  let rec let_ribs_to_vars ribs =
+    match ribs with
+    | [] -> []
+    | (var_name , value) :: rest -> [var_name] @ (let_ribs_to_vars rest);;
+
+
+  let rec let_ribs_to_vals ribs =
+    match ribs with
+    | [] -> []
+    | (var_name , value) :: rest -> [value] @ (let_ribs_to_vars rest);;
+
   let rec tag_parse sexpr =
     match sexpr with
     | ScmVoid | ScmBoolean _ | ScmChar _ | ScmString _ | ScmNumber _ ->
        ScmConst sexpr
     | ScmPair (ScmSymbol "quote", ScmPair (sexpr, ScmNil)) ->
-      (* original: raise X_not_yet_implemented *)
-       ScmPair (ScmSymbol "quote", ScmPair (tag_parse sexpr, ScmNil))
-
+        let parsed: sexpr = sexpr in
+        let first = parsed in
+        let second = ScmNil in
+        let tuple: (sexpr * sexpr) = (first, second) in
+        ScmConst (ScmPair (sexpr, ScmNil))
     | ScmPair (ScmSymbol "quasiquote", ScmPair (sexpr, ScmNil)) ->
        tag_parse (macro_expand_qq sexpr)
     | ScmSymbol var ->
@@ -688,10 +702,10 @@ module Tag_Parser : TAG_PARSER = struct
         | params, ScmSymbol opt ->
            ScmLambda(unsymbolify_vars params, Opt opt, expr)
         | _ -> raise (X_syntax "invalid parameter list"))
-    | ScmPair (ScmSymbol "let", ScmPair (ribs, exprs)) ->
-       raise X_not_yet_implemented
-    | ScmPair (ScmSymbol "let*", ScmPair (ScmNil, exprs)) ->
-       raise X_not_yet_implemented
+    | ScmPair (ScmSymbol "let", ScmPair (ribs, exprs)) -> raise X_not_yet_implemented
+(*        let expr = tag_parse (ScmPair(ScmSymbol "begin", exprs)) in*)
+
+    | ScmPair (ScmSymbol "let*", ScmPair (ScmNil, exprs)) -> raise X_not_yet_implemented (*ScmApplic (ScmLambda ([], Simple, exprs), [])*)
     | ScmPair (ScmSymbol "let*",
                ScmPair
                  (ScmPair
@@ -704,13 +718,11 @@ module Tag_Parser : TAG_PARSER = struct
                         exprs)) -> raise X_not_yet_implemented
     | ScmPair (ScmSymbol "letrec", ScmPair (ribs, exprs)) ->
        raise X_not_yet_implemented
-    | ScmPair (ScmSymbol "and", ScmNil) ->
-       tag_parse (macro_expand_and_clauses ScmNil)
-      (* raise X_not_yet_implemented *)
+    | ScmPair (ScmSymbol "and", ScmNil) -> ScmConst (ScmBoolean false)
     | ScmPair (ScmSymbol "and", exprs) ->
        (match (scheme_list_to_ocaml exprs) with
         | expr :: exprs, ScmNil ->
-           tag_parse (macro_expand_and_clauses expr exprs)
+           tag_parse (macro_expand_and_clauses ([expr] @ exprs))
         | _ -> raise (X_syntax "malformed and-expression"))
     | ScmPair (ScmSymbol "cond", ribs) ->
        tag_parse (macro_expand_cond_ribs ribs)
